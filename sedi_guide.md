@@ -3569,3 +3569,158 @@ Issuing Agent A and Issuing Agent B each also establish an issuance registry for
   'dt': '2026-09-01T08:30:00.000000+00:00'
 }
 ```
+
+### Example 2: Name and over-13 presentation
+
+This second example is a presentation. A Verifier asks a Citizen to prove given name and that they are over 13. The Citizen already holds a Core Identity ACDC and an Age ACDC issued by Issuing Agent A. Age is the origin of the disclosure DAG: its `coreIdentity` edge links to Core with operators `E1E`, `DI1I`, and `NI2I`, so presenting Age already reaches Core and does not need a bespoke ACDC. Issuing Agent A is absent from the exchange. Disclosure is partial: the grant expands only `over13` in the Age aggregate and only `givenName` in the nested Core.
+
+```python
+applyExn, applyAtc = ipexApply(
+    hab=verifier,
+    recp=citizen.pre,
+    message="Prove given name and over-13",
+    modifiers=dict(dp=[[
+        [AgeSchemaSaid, "/", ["A/over13"]],
+        [CoreSchemaSaid, "/e/coreIdentity/_/", ["a/givenName/"]],
+        [AgentSchemaSaid, "/e/coreIdentity/_/e/utahAgent/_/", []],
+        [UnitSchemaSaid, "/e/coreIdentity/_/e/utahAgent/_/e/orgUnit/_/", []],
+    ]]),
+    ax=[True],
+)
+offerExn, offerAtc = ipexOffer(
+    hab=citizen,
+    message="Offer given name and over-13",
+    origin=age,                  # issued Age ACDC
+    apply=storedApply,
+    ax=[True],
+)
+agreeExn, agreeAtc = ipexAgree(
+    hab=verifier,
+    message="Agree to given name and over-13",
+    offer=storedOffer,
+)
+grantExn, grantAtc = ipexGrant(
+    hab=citizen,
+    recp=verifier.pre,
+    message="Present given name and over-13",
+    origin=proofedAge,           # selective Age plus registry proof
+    artifacts=[proofedCore, proofedAgent, proofedUnit],
+    agree=storedAgree,
+    ax=[True],
+)
+admitExn, admitAtc = ipexAdmit(
+    hab=verifier,
+    message="Given name and over-13 received",
+    grant=storedGrant,
+)
+```
+
+The Citizen already holds the issued Age ACDC from the Age ACDC Example. The grant delivers a selective variant of that same credential: the AGID stays, `over13` is expanded, and every other aggregate element is its digest.
+
+```python
+{
+  'v': 'ACDCCAACAAJSONAAWG.',
+  't': 'acg',
+  'd': 'ECfZCyLfleF3zA8qsHJ0WZYXW5xyR-aPDC8dl6RfLd27',
+  'u': '0AA-hoK5ewZYxB5hXEMwxq5X',
+  'i': 'EKBCU6u_xObNhFc9uuz1VdntNt99xmB2fA5qz7Li-Sl-',
+  'rd': 'ED69oluOxaPx6sNYF6w2qklDrOu21WAOHv5NK25D4lUg',
+  's': 'EPqXrwPT6b0_KghrrMuIdmuD68Aytv1XK6jU86EumgJV',
+  'A':
+  [
+    'EKpXUDp6DObtMdVDmHV4YydNCjUrlfQyxQt88jrxJ88X',
+    'EDA6IJUQ__dJgXgYiLfreRLsEm1-5xNqBiOIc5sCFful',
+    'EHFHaihQnDcyQ2Oj_rPhl6-f30RdUrdT9LUni53B0iyl',
+    'ENP5C_6TsmE_KYx8DAvOtUvlsTB4PwBo8MAUXIEEi0Ck',
+    {
+      'd': 'EJdPqE-rEP1NKS4JD_gUhkJOKcQl5OnYbgph8hsxtZtr',
+      'u': '0ABnfpH75cVvRDh0giU6e1mn',
+      'over13': True
+    },
+    'EPCejGeNknpUDiLJRaCjRmSeGEzroi1Q0JwRyvJ7xP_V',
+    'EPfmjyv4bV4Ik52AhOY_ifttEH8rTKveZNZCra3-1fqV',
+    'EI0E1JC9Bx71cWfVNdYDcKBnfTqpivOc4WVi8h8VS9Qs',
+    'EBfwq_wksugRyl-ov5BavfsCA1Hl0RKbuOpjbKDi_VdQ',
+    'EGBj6JpQpsU12XCJqGJPu_JYohubd5kQdvvLN54qUaAN',
+    'EL5jXoUIxAYsWapoisXX9icDUxW3zBnFaWpJ5UYHW7yU',
+    'EBgZxdd19DGZ4XYpdDfWrTtDF0HNpnkyJNoAXpCkAUWf',
+    'EBz1eWrprA7WneGEZQ6DZB3iaZIgBWbS7-clMPL_IAnU',
+    'ED1_JpPfZ9pzBpQnJo4ckUhg-Z-TImSp-8mwqzAFQtF9',
+    'EMVqcI3h7RMznAX9HaJoeyB8sDHhB9bvdcwHjhRPLvQy'
+  ],
+  'e':
+  {
+    'd': 'EOYHSibcRhHNX_hYm_vBXd1KbDWiVkH5jd7ILEV4QyHV',
+    'u': '0ACyPy93wKHIWAvzu92ooj2c',
+    'coreIdentity':
+    {
+      'd': 'EJA7mNbo51gVlMGjFceykFSrkxPkykLd0n7yFvUlxd86',
+      'u': '0AAYbJl5lc9BwGOLiIaQVWQ8',
+      'n': 'EGsPyGCyHtDSWP61rVsRh3F8qooP_jrX6qPHqHn7-FOg',
+      's': 'EN0JtdzBmFuTUzyJG9CXZhtdu-bW0V6L95bsVBzi-cY-',
+      'o': ['E1E', 'DI1I', 'NI2I']
+    }
+  },
+  'r':
+  {
+    'd': 'EFPxq4WPl29szUqbrQIviOh_Ls_RlrYbp4L-fdQH0XrX',
+    'l': ''
+  }
+}
+```
+
+The nested Core artifact is a selective variant of the Core Identity ACDC Example. Only `givenName` is expanded; the other independently saidified attribute blocks are their digests.
+
+```python
+{
+  'v': 'ACDCCAACAAJSONAAWo.',
+  't': 'acm',
+  'd': 'EGsPyGCyHtDSWP61rVsRh3F8qooP_jrX6qPHqHn7-FOg',
+  'u': '0ABQNZNkD1y0W4mglDB4ei5Y',
+  'i': 'EKBCU6u_xObNhFc9uuz1VdntNt99xmB2fA5qz7Li-Sl-',
+  'rd': 'EDOfxmEeOsWdi5ZQyuy98W4s15vmV1RWVFuqm4GZflTn',
+  's': 'EN0JtdzBmFuTUzyJG9CXZhtdu-bW0V6L95bsVBzi-cY-',
+  'a':
+  {
+    'd': 'EPIuMf4tkzdqVMSuq59rBD14LZpmFtFjhnh8Io1BWdbt',
+    'u': '0ACd8yXBMGBLNDwr-MMgtris',
+    'i': 'EDB8gKNwzurf33pV2hsyGR9XFOmitDhc0LUzDamcU2JR',
+    'rd': 'ELUW5D0X0pMFM30ZHZKB997lad86PISushrKkKzlhQrl',
+    'primary': True,
+    'givenName':
+    {
+      'd': 'EBu_EdUcstZq6woZ7NMe2pyU7jjcQOdC9w1ryHa1P_Sq',
+      'u': '0ADGYtYEzEdGpaq_sDXwamDm',
+      'value': 'Guy'
+    },
+    'middleName': 'EOhalIHhb5ZbrJZ5SMY_vWBj2ds_z9W8mJ3j-FTjgSUz',
+    'familyName': 'EDBg78wYuNEQkcv-XciKFkxDQmRvIeTsXfjVMJLtUjYW',
+    'nameSuffix': 'EFDPwXKE-3wg-WTUVu4GWfMeu4bj8rGNkvdFrMo4Ja4N',
+    'birthDate': 'EMGKn6dwPJMd79vWaGEv7OlCQQ0oGd0nt0fRqBfz1ZyA',
+    'facialImageProof': 'EInFQsE3pfRWQp3KrpH91f7YMCR2wslrTOTKL5SF6_E7',
+    'legalPresenceStatus': 'EMfOp3-Dd1ZXSDUHNWE4ohAsU0Qp8tfQV_gUYKSJE7-Q',
+    'issuedDate': 'EFkQuDu6twqFQ3GdSpK-jxKRYsxxCx-iSbh9RMbTbIsE',
+    'expirationDate': 'EOjYb0hwGBe1rA0Ui8foLMoCu5lItuhnodomghuyY4r9'
+  },
+  'e':
+  {
+    'd': 'EFwdv1MuJAVYnyuhee0kAjDIpF44oFn5oFo9xoVwtId1',
+    'u': '0AADjz761fupJiCvj4GWFBfg',
+    'utahAgent':
+    {
+      'd': 'EIh9Bz0kGwGyfDbDe42W1zA9Ukj2DuH-95eebY57ctI6',
+      'u': '0AAsHaHfgfNEaRuRwI1Y77ry',
+      'n': 'EOD4QiWo1oa6UtiEr456Lu0ba3v1Cmd6qOPoRbAdx2hD',
+      's': 'EGx4BLclkjhaK1501guyBifxuTTJLwuK61InBTdkKF7v',
+      'o': 'DI2I'
+    }
+  },
+  'r':
+  {
+    'd': 'EFPxq4WPl29szUqbrQIviOh_Ls_RlrYbp4L-fdQH0XrX',
+    'l': ''
+  }
+}
+```
+
+Issuing Agent A and the Organizational Unit travel as supporting artifacts along the `utahAgent` and `orgUnit` edges—the same bodies as in Example 1.
