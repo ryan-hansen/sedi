@@ -105,9 +105,9 @@ The following table provides the schema ID  `$id` field and a description. ACDCs
 
 | Schema SAID $id | ACDc Description |
 |:--|---|
-| ELjJlSaExu9ss766dDpQoLE5aT6-wIRyR72X5YLC3ILc | SEDI Organizational Unit Authority Delegation |
+| EBbOpBe0lP_epHhakeiXdOmeal3leDfLRf0PAItsanoQ | SEDI Organizational Unit Authority Delegation |
 | EGx4BLclkjhaK1501guyBifxuTTJLwuK61InBTdkKF7v | SEDI Issuing Agent Authority Delegation |
-| N0JtdzBmFuTUzyJG9CXZhtdu-bW0V6L95bsVBzi-cY- | SEDI Citizen Core Identity Attributes|
+| EN0JtdzBmFuTUzyJG9CXZhtdu-bW0V6L95bsVBzi-cY- | SEDI Citizen Core Identity Attributes|
 | EH5hn7CbtDFxhS3IKioC8P-e4YyZoxqzhRpr4X_e32BD | SEDI Citizen Residence Address Attributes|
 | EPqXrwPT6b0_KghrrMuIdmuD68Aytv1XK6jU86EumgJV | SEDI Citizen Age Threshold Attributes|
 | EKuGAkHNpj5ujsEWQuZFe8bbuSrIOwojUNjgirDtWIAb | SEDI Citizen High Resolution Image Biometric Proof |
@@ -125,10 +125,10 @@ The following table provides the schema ID  `$id` field and a description. ACDCs
 This defines an ACDC that the State's root-of-trust AID or root AID issues to delegate an Organizational Unit AID within the State hierarchy. Typically, an organizational unit is at a department, division, or program level within the State.
 
 ```python
-UnitSchemaSaid = 'ELjJlSaExu9ss766dDpQoLE5aT6-wIRyR72X5YLC3ILc'
+UnitSchemaSaid = 'EBbOpBe0lP_epHhakeiXdOmeal3leDfLRf0PAItsanoQ'
 UnitSchema = \
 {
-  '$id': 'ELjJlSaExu9ss766dDpQoLE5aT6-wIRyR72X5YLC3ILc',
+  '$id': 'EBbOpBe0lP_epHhakeiXdOmeal3leDfLRf0PAItsanoQ',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'title': 'SEDI Organizational Unit Schema',
   'description': 'SEDI Oganizational Unit JSON Schema for acm ACDC.',
@@ -990,7 +990,7 @@ CoreSchema = \
       'o': 'OR',
       'first': 
       {
-        'd': 'EI9xHRCHmtsJC4Y8Nk4DSLuFyKJejJbEpMja8-q8sbdW',
+        'd': 'EJTEtrwzoTFYe-Qdgsw0_1iC0g8_PUuTdFSqBBFI4fxS',
         'u': '0ADInES4ee08OqL13tRxLDd0',
         'n': 'EONzgE0pcYF7hz1E_VVN4ea9iv75Q_C2ifhsZV1j6uQp',
         's': 'EDJzXg34opr6-odFix6lpiccfHF7ksITHuIES_MQRH4b',
@@ -3137,4 +3137,435 @@ IarSchema = \
 ```
 
 
+
 ## SEDI ACDC Usage Examples
+
+The credential bodies and SAIDs in this section come from `keripy/tests/sedi/test_sedi.py` (`test_sedi_acdcs`). The IPEX call patterns use `keri.acdc`. Where more than one party holds the same role, this guide designates them Issuing Agent A and Issuing Agent B.
+
+### IPEX
+
+Before any sensitive ACDC content is delivered, the two parties negotiate and must agree on a *disclosure plan*: which ACDCs in the exchange, and which parts of those ACDCs, will be revealed. This is accomplished by naming the paths into a *DAG*—a linked set of ACDCs disclosed together (see DAG below). An *issuance* plan always includes the whole credential for disclosure, while a *presentation* plan may only include selected paths in the DAG (for example, citizenship status without the holder's name).
+
+IPEX (Issuance and Presentation Exchange) is the exchange protocol for this negotiation. An IPEX negotiation is a series of KERI messages, specifically `exn` (exchange) messages, between two parties. IPEX is not a message type of its own; it is a meta-protocol that defines *routes* on `exn` messages so those two parties can run an issuance or a presentation conversation. The same message sequence covers both.
+
+Each `exn` in the negotiation carries a common envelope. The fields that matter for IPEX are:
+
+| Field | Role |
+|:--|:--|
+| `i` | Sender AID |
+| `ri` | Receiver AID |
+| `x` | Transaction identifier shared by every message in this negotiation |
+| `p` | Prior exchange SAID (empty on the opening message) |
+| `r` | Route that selects the IPEX step (`/ipex/apply`, `/ipex/offer`, and so on) |
+| `q` | Query section; holds the disclosure plan at `q.dp` when the step negotiates paths |
+| `a` | Attribute section; holds the human message, origin SAID(s), and anchoring flag |
+
+The defined steps of IPEX negotiation are described in detail in the *Exchange Steps* section below, but in short, they are the following:
+
+- *apply* — request a disclosure
+- *offer* — propose the credentials (and terms) that would satisfy that disclosure
+- *agree* — accept a specific offer
+- *grant* — deliver the negotiated ACDCs plus proofs
+- *admit* — acknowledge receipt of the grant
+- *spurn* — reject and end the exchange (only on apply, offer, or agree)
+
+The opening message—apply, offer, or grant—chooses `x`. Every subsequent message copies that same `x` and sets `p` to the SAID of the message it answers. Parties do not copy payloads forward; they chain by SAID.
+
+The disclosure plan is passed in the query section of the `exn` message (`q.dp`), which is a list of triples, one per ACDC involved in the disclosure:
+
+```text
+(schema SAID, prefix, [paths])
+```
+
+The *schema SAID* is published with the schema and identifies the ACDC type. The *prefix* places that ACDC in the DAG (`""` for paths relative to that ACDC, or a DAG-absolute prefix ending in `/`). The *paths* list names the sections or fields to disclose under that prefix. The zeroth triple is always the *origin*—the source node of the DAG for this exchange. Later triples are the other ACDCs in the graph, in breadth-first order from that origin.
+
+`q.dp` appears on apply and offer, where the plan is negotiated. A solicited offer may omit a new plan and inherit the apply's `q.dp`. Grant does not restate `q.dp`; it delivers the ACDC variant(s) that satisfy the agreed plan. Nested ACDC bodies travel with the offer or grant as attached CESR streams; their instance SAIDs appear in `a.o`. Registry proofs that show dynamic state (such as revocation status) are attached on the grant, not earlier.
+
+#### Issuance
+
+*Issuance* is the IPEX exchange in which an Issuer delivers a newly issued ACDC to its Issuee. It is two-party. Disclosure is full: the Issuee already knows the attributes and must be able to read the whole credential before accepting it. Offer and agree still run so the Issuee can confirm that the Issuer got those attributes right before the grant.
+
+#### Presentation
+
+*Presentation* is the IPEX exchange in which a holder discloses one or more already-issued ACDCs to a verifier. Only the holder and the verifier need take part in the exchange. The Issuer of those ACDCs need not be online and need not be a signer on the presentation. The Issuer could also be the verifier. Presentation may be partial: the disclosure plan names only the paths the verifier needs.
+
+#### Discloser and Disclosee
+
+Both issuance and presentation are disclosures. The *Discloser* is the party that holds or controls the ACDC data and may reveal it. The *Disclosee* is the party that requests or receives that disclosure. In an issuance, the Issuer is the Discloser and the Issuee is the Disclosee. In a presentation, the holder is the Discloser and the verifier is the Disclosee.
+
+#### DAG
+
+A *DAG* (Directed Acyclic Graph) is a set of linked ACDCs disclosed together in one IPEX exchange. Edges between ACDCs form the links. The *origin* is the source node of that graph for the exchange--the ACDC named first in `q.dp` and in `a.o`, not the Root AID of the chain of authority. A verifier follows edges from the origin through the disclosed nodes. A bespoke presentation ACDC is one way to make several SEDI credentials share a single origin. 
+
+#### Exchange Steps
+
+The usual IPEX sequence is apply → offer → agree → grant → admit. Either party may terminate with spurn at apply, offer, or agree. The initiating steps are apply, offer, and grant (a flow may open on any of those).
+
+*Apply* is the Disclosee's request. It carries the disclosure plan in `q.dp` and may require anchoring (`a.ax`). It opens a solicited flow and chooses the transaction identifier.
+
+*Offer* is the Discloser's proposal. It names the origin ACDC SAID(s) in `a.o` and may carry a metadata or full ACDC body. When it answers an apply, an omitted disclosure plan inherits the apply's `q.dp`. An offer may also open an unsolicited flow with no prior apply. The Disclosee uses the offer to inspect terms and (for issuance) the full attributes before committing.
+
+*Agree* is the Disclosee's acceptance of a specific offer. It signs the offer's SAID. There is no new ACDC. When the offer required anchoring, agree echoes that requirement and seals the agreement.
+
+*Grant* is the Discloser's delivery of the negotiated ACDC variant(s), with registry proofs attached when the ACDC has an issuance registry. Its prior is normally the agree. It may instead follow an apply directly when the parties skip offer and agree. The grant does not restate `q.dp`. The grant is already verifiable; admit is not required for validity.
+
+*Admit* is the Disclosee's acknowledgement of a grant. It settles the exchange from the Disclosee's side and may seal that acknowledgement.
+
+*Spurn* is either party's rejection. It ends the exchange at apply, offer, or agree without a grant.
+
+### IPEX builders in keripy
+
+`keri.acdc` exports a builder for each exchange step. The examples below import them under `ipex*` aliases:
+
+```python
+from keri.acdc import (
+    apply as ipexApply,
+    offer as ipexOffer,
+    agree as ipexAgree,
+    grant as ipexGrant,
+    admit as ipexAdmit,
+    spurn as ipexSpurn,
+)
+```
+
+Each builder returns `(serder, atc)`: the signed exchange serder and its detached attachment bytes. Important fields the builders set:
+
+| Field | Role |
+|:--|:--|
+| `r` | Route (`/ipex/apply`, `/ipex/offer`, `/ipex/agree`, `/ipex/grant`, `/ipex/admit`, `/ipex/spurn`) |
+| `x` | Transaction identifier (chosen on the opening message; later messages copy it) |
+| `p` | Prior exchange SAID (empty on the opening message) |
+| `q.dp` | Disclosure plan (required on apply; offer may inherit or override; grant does not carry it) |
+| `a.m` | Human-readable message |
+| `a.o` | SAID(s) of the origin ACDC(s) being offered or granted |
+| `a.ax` | Anchoring requirement (`[True]` seals the commitment in a KEL) |
+
+### Issuance over IPEX
+
+Before the IPEX exchange, the Issuer creates registry state for the credential with `Registrar` from `keri.acdc`. For the Organizational Unit credential:
+
+Open a registrar on the Root AID's registry store and create the issuance registry. `makeRegistry` writes the registry inception (`rip`); its SAID is the credential's `rd`.
+
+```python
+from keri.acdc import Registrar
+from keri import Vrsn_2_0
+
+rootRegistrar = Registrar(rgy=rootRgy)
+unitRegistry = rootRegistrar.makeRegistry(
+    name="unit-issuer-registry",
+    prefix=root.pre,
+)
+unitRip = rootRgy.store.event(unitRegistry.regk)
+```
+
+Seal that `rip` in the Root AID's KEL, then tell the registry the seal is in place:
+
+```python
+unitRipAnchor = root.interact(
+    data=[dict(i=unitRegistry.regk, s=unitRip.sad["n"], d=unitRip.said)],
+    framed=True,
+    gvrsn=Vrsn_2_0,
+)
+unitRegistry.anchorMsg(unitRip.said)
+```
+
+Issue the ACDC into the registry. `issue` returns `(blinder, serder)`: `unitProof` is the issuance blinder (the registry proof used later on the grant); `unitIssued` is the blinded update event (`bup`).
+
+```python
+unitProof, unitIssued = rootRegistrar.issue(unitRegistry, acdc=unit)
+```
+
+Seal that update in the Root AID's KEL the same way:
+
+```python
+unitIssuedAnchor = root.interact(
+    data=[dict(i=unitRegistry.regk, s=unitIssued.sad["n"], d=unitIssued.said)],
+    framed=True,
+    gvrsn=Vrsn_2_0,
+)
+unitRegistry.anchorMsg(unitIssued.said)
+```
+
+The offer carries the bare ACDC—no registry proof yet:
+
+```python
+offerExn, offerAtc = ipexOffer(
+    hab=root,
+    message="Offer the Organizational Unit delegation",
+    origin=unit,
+    apply=storedApply,
+    ax=[True],
+)
+```
+
+The grant carries the same ACDC with `unitProof` attached:
+
+```python
+from keri.core import messagize
+
+proofedUnit = messagize(
+    serder=unit,
+    bonds=[unitProof.data],
+    framed=False,
+    gvrsn=Vrsn_2_0,
+)
+grantExn, grantAtc = ipexGrant(
+    hab=root,
+    recp=org.pre,
+    message="Grant the Organizational Unit delegation",
+    origin=proofedUnit,
+    agree=storedAgree,
+    ax=[True],
+)
+```
+
+### Example 1: Organizational Unit delegation
+
+This first example is the State chain of authority: the Root AID issues an Organizational Unit delegation, and that Organizational Unit AID issues Issuing Agent delegations to Issuing Agent A and Issuing Agent B.
+
+```python
+applyExn, applyAtc = ipexApply(
+    hab=org,
+    recp=root.pre,
+    message="Issue the Organizational Unit delegation",
+    modifiers=dict(dp=[[[UnitSchemaSaid, "/", [""]]]]),
+    ax=[True],
+)
+offerExn, offerAtc = ipexOffer(
+    hab=root,
+    message="Offer the Organizational Unit delegation",
+    origin=unit,
+    apply=storedApply,
+    ax=[True],
+)
+agreeExn, agreeAtc = ipexAgree(
+    hab=org,
+    message="Agree to the Organizational Unit delegation",
+    offer=storedOffer,
+)
+grantExn, grantAtc = ipexGrant(
+    hab=root,
+    recp=org.pre,
+    message="Grant the Organizational Unit delegation",
+    origin=proofedUnit,          # unit plus registry proof
+    agree=storedAgree,
+    ax=[True],
+)
+admitExn, admitAtc = ipexAdmit(
+    hab=org,
+    message="Organizational Unit delegation received",
+    grant=storedGrant,
+)
+```
+
+The offered and granted body:
+
+```python
+{
+  'v': 'ACDCCAACAAJSONAAIn.',
+  't': 'acm',
+  'd': 'EIojbncOpuCoMFWZSutjfkLf5KNu_nbCOsqgFClk3SMK',
+  'u': '0AAxOP-l4O8GZPbv7dQBeNfM',
+  'i': 'EAN4gwVu_a9EDxFn-camF6OoQvZAvi-_FyluyyZFKzs5',
+  'rd': 'EA3Y6LeoyNFjnLS1xZoRQnzX0fWgUw0XjD4IgIf8ZHxD',
+  's': 'EBbOpBe0lP_epHhakeiXdOmeal3leDfLRf0PAItsanoQ',
+  'a':
+  {
+    'd': 'EHydQsy-4di85pJaiPqVN9_APpLtU15QXcmVFEN2FQE-',
+    'u': '0AAk4UxXJc8mbqWSdtAPkK6w',
+    'i': 'EMrUfTuv8j3vBVAgPSlDi1D_o35F5uwsIAWjBatLhK9E',
+    'issuedDate': '2020-08-01T00:00:00.000000+00:00',
+    'unit': 'SediProgramOffice'
+  },
+  'r':
+  {
+    'd': 'EFPxq4WPl29szUqbrQIviOh_Ls_RlrYbp4L-fdQH0XrX',
+    'l': ''
+  }
+}
+```
+
+Root AID issuance registry (`rd` above):
+
+```python
+{
+  'v': 'ACDCCAACAAJSONAADa.',
+  't': 'rip',
+  'd': 'EA3Y6LeoyNFjnLS1xZoRQnzX0fWgUw0XjD4IgIf8ZHxD',
+  'u': '0ACIMnBibvjpJYvhw5cN26jp',
+  'i': 'EAN4gwVu_a9EDxFn-camF6OoQvZAvi-_FyluyyZFKzs5',
+  'n': '0',
+  'dt': '2026-09-01T08:30:00.000000+00:00'
+}
+```
+
+### Issuing Agent delegations
+
+The Organizational Unit AID runs the same full-disclosure exchange twice: once to Issuing Agent A and once to Issuing Agent B.
+
+```python
+applyExn, applyAtc = ipexApply(
+    hab=agentHab,                # Issuing Agent A or B
+    recp=org.pre,
+    message="Issue the Issuing Agent delegation",
+    modifiers=dict(dp=[[[AgentSchemaSaid, "/", [""]]]]),
+    ax=[True],
+)
+offerExn, offerAtc = ipexOffer(
+    hab=org,
+    message="Offer the Issuing Agent delegation",
+    origin=agent,                # agent ACDC
+    apply=storedApply,
+    ax=[True],
+)
+agreeExn, agreeAtc = ipexAgree(
+    hab=agentHab,
+    message="Agree to the Issuing Agent delegation",
+    offer=storedOffer,
+)
+grantExn, grantAtc = ipexGrant(
+    hab=org,
+    recp=agentHab.pre,
+    message="Grant the Issuing Agent delegation",
+    origin=proofedAgent,         # agent plus registry proof
+    agree=storedAgree,
+    ax=[True],
+)
+admitExn, admitAtc = ipexAdmit(
+    hab=agentHab,
+    message="Issuing Agent delegation received",
+    grant=storedGrant,
+)
+```
+
+Issuing Agent A:
+
+```python
+{
+  'v': 'ACDCCAACAAJSONAAO9.',
+  't': 'acm',
+  'd': 'EOD4QiWo1oa6UtiEr456Lu0ba3v1Cmd6qOPoRbAdx2hD',
+  'u': '0ACpkR3a0WoJk8BHz4M6aZVo',
+  'i': 'EMrUfTuv8j3vBVAgPSlDi1D_o35F5uwsIAWjBatLhK9E',
+  'rd': 'EEy3daQxc9NrgzA1V7KjgOqLF_te2gs2-sYElTHsPzYE',
+  's': 'EGx4BLclkjhaK1501guyBifxuTTJLwuK61InBTdkKF7v',
+  'a':
+  {
+    'd': 'EFPQAD6XLlU9bnNPMWfjl1Q-Rf20Jwoip_1lkp8XGKKt',
+    'u': '0ADtdKN8DlnUKUFDN47QKfNj',
+    'i': 'EKBCU6u_xObNhFc9uuz1VdntNt99xmB2fA5qz7Li-Sl-',
+    'issuedDate': '2020-08-01T00:00:00.000000+00:00',
+    'role': 'SediIssuingAgent',
+    'name':
+    {
+      'd': 'EJj1BPhB8uGFLA8QtNjNJ9MXJ8fvOliIWj5w7YLzReWI',
+      'u': '0AC0eUUAKHVXdJMDVXtx1yS3',
+      'value': 'Susan Park'
+    }
+  },
+  'e':
+  {
+    'd': 'EIZC3vk0dgDvZNV3Vf1z3mav0HkMbGHq0vxm7NcbC6WP',
+    'u': '0AB4w_WXy8JmoUebF1aEnOD_',
+    'orgUnit':
+    {
+      'd': 'ENZvB2t1Tit1Z2PSSebS70IKEq33JynJrWK-rjR_cSMA',
+      'u': '0ABl8aVsQRgBVSWnMQcwgDQ7',
+      'n': 'EIojbncOpuCoMFWZSutjfkLf5KNu_nbCOsqgFClk3SMK',
+      's': 'EBbOpBe0lP_epHhakeiXdOmeal3leDfLRf0PAItsanoQ',
+      'o': 'DI2I'
+    }
+  },
+  'r':
+  {
+    'd': 'EFPxq4WPl29szUqbrQIviOh_Ls_RlrYbp4L-fdQH0XrX',
+    'l': ''
+  }
+}
+```
+
+Issuing Agent B:
+
+```python
+{
+  'v': 'ACDCCAACAAJSONAAO_.',
+  't': 'acm',
+  'd': 'EB4QhQdELR7HN6ACcRc-OeOa1x-AsXicNwXOXzZ4r5LC',
+  'u': '0ABRWAE2yQo78JgmLSXZgi0w',
+  'i': 'EMrUfTuv8j3vBVAgPSlDi1D_o35F5uwsIAWjBatLhK9E',
+  'rd': 'EEy3daQxc9NrgzA1V7KjgOqLF_te2gs2-sYElTHsPzYE',
+  's': 'EGx4BLclkjhaK1501guyBifxuTTJLwuK61InBTdkKF7v',
+  'a':
+  {
+    'd': 'EK4yVDaY7-RHcZY2A9RTG-eWUwJoz_STt6sxRlyzD7-B',
+    'u': '0ACjOOUKZ3okNszGhHdnBchS',
+    'i': 'EDOP0lrGzY0VdsRfbcLhOTYw0yrYrtglnGoJsScZtY5o',
+    'issuedDate': '2020-08-01T00:00:00.000000+00:00',
+    'role': 'SediIssuingAgent',
+    'name':
+    {
+      'd': 'EO7zg2QSbE3-T8xGVL_xwLE7GtYgtoV6sIt2N1FVF3JR',
+      'u': '0ABN-CzDURbSM3EjAePWcHOm',
+      'value': 'Stuart Black'
+    }
+  },
+  'e':
+  {
+    'd': 'EEVW-O8vTUxjWtuCbmi5sHBhOF62-KisJhyktfjfKGq2',
+    'u': '0AAF4JG4eocE4N4jHM27t-7b',
+    'orgUnit':
+    {
+      'd': 'EAysG1wMMIUdB4V9u3aWda69qz4i__DlU7T2CUrsLwqs',
+      'u': '0AC1Kv67R7HVQnoicXf5XVbK',
+      'n': 'EIojbncOpuCoMFWZSutjfkLf5KNu_nbCOsqgFClk3SMK',
+      's': 'EBbOpBe0lP_epHhakeiXdOmeal3leDfLRf0PAItsanoQ',
+      'o': 'DI2I'
+    }
+  },
+  'r':
+  {
+    'd': 'EFPxq4WPl29szUqbrQIviOh_Ls_RlrYbp4L-fdQH0XrX',
+    'l': ''
+  }
+}
+```
+
+Organizational Unit issuance registry (anchors both Issuing Agent credentials):
+
+```python
+{
+  'v': 'ACDCCAACAAJSONAADa.',
+  't': 'rip',
+  'd': 'EEy3daQxc9NrgzA1V7KjgOqLF_te2gs2-sYElTHsPzYE',
+  'u': '0AC-owO6qg3aecNmUKdDl8mm',
+  'i': 'EMrUfTuv8j3vBVAgPSlDi1D_o35F5uwsIAWjBatLhK9E',
+  'n': '0',
+  'dt': '2026-09-01T08:30:00.000000+00:00'
+}
+```
+
+Issuing Agent A and Issuing Agent B each also establish an issuance registry for the entitlements they will issue later:
+
+```python
+{
+  'v': 'ACDCCAACAAJSONAADa.',
+  't': 'rip',
+  'd': 'EDOfxmEeOsWdi5ZQyuy98W4s15vmV1RWVFuqm4GZflTn',
+  'u': '0ADX782wlYptYlK0MqR6ebA-',
+  'i': 'EKBCU6u_xObNhFc9uuz1VdntNt99xmB2fA5qz7Li-Sl-',
+  'n': '0',
+  'dt': '2026-09-01T08:30:00.000000+00:00'
+}
+```
+
+```python
+{
+  'v': 'ACDCCAACAAJSONAADa.',
+  't': 'rip',
+  'd': 'ELm6OhvWprcGl8Ej8rpJXivzAl0NwaVpvwI8V7REHZMm',
+  'u': '0AAtbntD2ZNlbN7tnOfYrTIy',
+  'i': 'EDOP0lrGzY0VdsRfbcLhOTYw0yrYrtglnGoJsScZtY5o',
+  'n': '0',
+  'dt': '2026-09-01T08:30:00.000000+00:00'
+}
+```
