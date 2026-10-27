@@ -3724,3 +3724,180 @@ The nested Core artifact is a selective variant of the Core Identity ACDC Exampl
 ```
 
 Issuing Agent A and the Organizational Unit travel as supporting artifacts along the `utahAgent` and `orgUnit` edges—the same bodies as in Example 1.
+
+### Example 3: Guardianship social-media presentation
+
+A *bespoke* ACDC is a self-issued credential that gathers other already-issued ACDCs under one DAG origin. The holder issues it to itself; its edges name the credentials to present together. Signing that origin authenticates the whole presentation. Example 2 did not need one: Age already edged to Core, so Age alone could be the origin. Here Age and Social do not share a single leaf origin, so the Ward issues a bespoke to bind them. That makes the exchange issuance and presentation at once—the Ward issues the bespoke and presents credentials others already issued.
+
+This example is that pattern for social-media onboarding. A Verifier (a social platform) asks a Ward to prove that they are over 13 and that a Guardian has authorized social-media access. The Ward's bespoke has `I2I` edges to an Age ACDC and a Social Access Authorization ACDC. Age was issued by Issuing Agent B—its edges carry both `coreIdentity` (`E1E`, `NI2I`) and a separate `utahAgent` (`DI2I`) because Issuing Agent B is not the issuer of the Ward's Core. Social was issued by the Guardian and edges to the Guardian ACDC. Those issuers are absent from the exchange. Disclosure of Age is partial (`over13` only); Social is full.
+
+Before the IPEX exchange, the Ward builds that bespoke ACDC. Issuer and issuee are both the Ward. The edges name the Age and Social credentials already held, with `I2I` so signing the origin counts as proof of control wherever the Ward appears as issuee in the resulting DAG. There is no issuance registry on this bespoke.
+
+```python
+from keri.acdc import acdcmap
+
+bespoke = acdcmap(
+    israid=ward.pre,
+    uuid=bespokeUuid,
+    schema=BespokeSchemaSaid,
+    attribute=bespokeAttribute,  # i = Ward
+    edge=bespokeEdge,            # age and social with o = I2I
+    rule=bespokeRule,
+)
+```
+
+The IPEX exchange then uses that `bespoke` as the origin:
+
+```python
+applyExn, applyAtc = ipexApply(
+    hab=verifier,
+    recp=ward.pre,
+    message="Prove over-13 and guardian social authorization",
+    modifiers=dict(dp=[[
+        [BespokeSchemaSaid, "/", [""]],
+        [AgeSchemaSaid, "/e/age/_/", ["A/over13"]],
+        [CoreSchemaSaid, "/e/age/_/e/coreIdentity/_/", []],
+        [AgentSchemaSaid, "/e/age/_/e/utahAgent/_/", []],
+        [UnitSchemaSaid, "/e/age/_/e/utahAgent/_/e/orgUnit/_/", []],
+        [SocialSchemaSaid, "/e/social/_/", [""]],
+        [GuardianSchemaSaid, "/e/social/_/e/guardian/_/", []],
+        [AgentSchemaSaid, "/e/social/_/e/guardian/_/e/utahAgent/_/", []],
+        [UnitSchemaSaid, "/e/social/_/e/guardian/_/e/utahAgent/_/e/orgUnit/_/", []],
+    ]]),
+    ax=[True],
+)
+offerExn, offerAtc = ipexOffer(
+    hab=ward,
+    message="Offer over-13 and guardian social authorization",
+    origin=bespoke,              # Ward-issued bespoke ACDC
+    apply=storedApply,
+    ax=[True],
+)
+agreeExn, agreeAtc = ipexAgree(
+    hab=verifier,
+    message="Agree to over-13 and guardian social authorization",
+    offer=storedOffer,
+)
+grantExn, grantAtc = ipexGrant(
+    hab=ward,
+    recp=verifier.pre,
+    message="Present over-13 and guardian social authorization",
+    origin=bespoke,
+    artifacts=[proofedAge, proofedSocial, proofedGuardian,
+               proofedCore, proofedAgentB, proofedAgentA, proofedUnit],
+    agree=storedAgree,
+    ax=[True],
+)
+admitExn, admitAtc = ipexAdmit(
+    hab=verifier,
+    message="Over-13 and guardian social authorization received",
+    grant=storedGrant,
+)
+```
+
+The offered and granted bespoke body (same as the Bespoke Combined Presentation ACDC Example for Age and Social Access):
+
+```python
+{
+  'v': 'ACDCCAACAAJSONAAMx.',
+  't': 'acm',
+  'd': 'EACZWEWeUKMw0d59M30OmlxpQfxUK0_OW9FkUT25iokI',
+  'u': '0AARpi9PM79plQI-rP2enPXJ',
+  'i': 'EKr8JLtfqWCmHrxO3yu8ocS2n9o0Tlspeaqm9ZOf3FM1',
+  's': 'EGcqmkrnaQz8F1PEekLOaySiW-uDaJ0SfoqtSuqCvEif',
+  'a':
+  {
+    'd': 'EP9aY5tjVfzqV3CCyB3KnIGRPKuB_NO9ajAFYKOC20cN',
+    'u': '0AAJsl8NNe3Ajs_GDdxw_Ilb',
+    'i': 'EKr8JLtfqWCmHrxO3yu8ocS2n9o0Tlspeaqm9ZOf3FM1'
+  },
+  'e':
+  {
+    'd': 'EGZ-MGre9h06zXulltjEHc7z_mEmJD3kN_3Df9eMV8Kw',
+    'u': '0ADQOM8dUNGQqnaYrpQUeZxO',
+    'age':
+    {
+      'd': 'EM0ZAhNU3fEqMlLD5iHYz24Bv0EuMjJxsXGnsHsci5Fc',
+      'u': '0AD_tiK8iw7ZQNWgsq9gKaHt',
+      'n': 'EJICGrKf1Lr1xg0EwSFViU_hJALJQcZSyI9gKk1tEkMr',
+      'o': 'I2I'
+    },
+    'social':
+    {
+      'd': 'EKYgLtmuXOimgfRGVDiTJSFKbWuSUjHs_KXW0PDwA2sO',
+      'u': '0AAmaC3QZgvoFtw1TlCLc6Gz',
+      'n': 'EGdxe5u7SRt__mJBvjRc0LdJycRDYgdnrjwdce9UQDE6',
+      'o': 'I2I'
+    }
+  },
+  'r':
+  {
+    'd': 'EFPxq4WPl29szUqbrQIviOh_Ls_RlrYbp4L-fdQH0XrX',
+    'l': ''
+  }
+}
+```
+
+The Age artifact is the Ward's Age ACDC issued by Issuing Agent B—not the Age ACDC Example from earlier, which belongs to a different citizen. The grant delivers a selective variant: the AGID stays, `over13` is expanded, and every other aggregate element is its digest.
+
+```python
+{
+  'v': 'ACDCCAACAAJSONAAZQ.',
+  't': 'acg',
+  'd': 'EJICGrKf1Lr1xg0EwSFViU_hJALJQcZSyI9gKk1tEkMr',
+  'u': '0ACSnRu5PiBZMyB50AN44tEp',
+  'i': 'EDOP0lrGzY0VdsRfbcLhOTYw0yrYrtglnGoJsScZtY5o',
+  'rd': 'ELm6OhvWprcGl8Ej8rpJXivzAl0NwaVpvwI8V7REHZMm',
+  's': 'EPqXrwPT6b0_KghrrMuIdmuD68Aytv1XK6jU86EumgJV',
+  'A':
+  [
+    'EIPO23PM9_b4wUpdpwnoxSKBtGGHvm5YO7t4EjIeVh_Z',
+    'EO53F7u9zm9roH3rgWgjJohNL8VzlNQGsie1atnaQsdP',
+    'EOQga9SaHyDpwb8f2XvhqWfejRouZHA3KLuxdrqeNtK3',
+    'ECB_ezwmrjcvRZbykmM458DO8qlWvLw7UrpLq9bkvZV4',
+    {
+      'd': 'EHjgkUAZWkp90GfZLvHNrA74-AAOFs6YhFZLStRqgPUB',
+      'u': '0ADT7b7aBOOKdfNKM0ZLl7BN',
+      'over13': True
+    },
+    'EI6rnufZXaz_WxSz3SH0EmOOyBGvJv81sf_A0uaiKxA1',
+    'EHGppZcHnAW2qGJJf4KFe__ARGhJ958wh8GArL52fLZh',
+    'EOllczPHC788VO_ZiNV1TXeMKCIplYJH_CFrvcDkLIIL',
+    'EEVaUQ3hdlY9bGMYvXpkiVjf5VVCFgEXwGul2F86FJHo',
+    'EOiZX5TSf-7ezQ88d40VJQ7biTCwwC5DVXLjLl9cVcvG',
+    'EIzeIUdqSs6OWe7zUMRktw8JMoJ-hQcQ7CZA_HrDcILm',
+    'EHLet8Ng_S7kJ6iI1DhJCkSqjZDHD_2Tf3Hn9m9FhL_z',
+    'EFaEbM5zI82fJzxDrllfnxOeJ2IOWorZShrpFcbmEPIv',
+    'EHcRkXAi6pGFqIniH2fzts9rYbkPptMtwiq1mLVfnDkh',
+    'ED83kXhYQ-fj4xriPLDWz_cGoNKHKM3QQGP_DVBYhfuM'
+  ],
+  'e':
+  {
+    'd': 'EKQfczAVgMFt60mEixrV9vCsH284MRJKJWlXREoZuC7S',
+    'u': '0AACOqJbUj6MqveA0RUh73oY',
+    'coreIdentity':
+    {
+      'd': 'EBusC04-2smPO86wPygmOHJTE99WyvKN9pd0HT6ckLyf',
+      'u': '0AA2_L2W6EjB9riVG-OLJd7d',
+      'n': 'EO2_WbE5hiB3HpwD2XDQShBDXSLsh7cYaIil_pWOBplX',
+      's': 'EN0JtdzBmFuTUzyJG9CXZhtdu-bW0V6L95bsVBzi-cY-',
+      'o': ['E1E', 'NI2I']
+    },
+    'utahAgent':
+    {
+      'd': 'ELbKSu1lgOexHivhTSJ_OXYgT4orToawWES-Z-6jj1Wt',
+      'u': '0AD210K_-b2iSmSksdKHRMsM',
+      'n': 'EB4QhQdELR7HN6ACcRc-OeOa1x-AsXicNwXOXzZ4r5LC',
+      's': 'EGx4BLclkjhaK1501guyBifxuTTJLwuK61InBTdkKF7v',
+      'o': 'DI2I'
+    }
+  },
+  'r':
+  {
+    'd': 'EFPxq4WPl29szUqbrQIviOh_Ls_RlrYbp4L-fdQH0XrX',
+    'l': ''
+  }
+}
+```
+
+The Social artifact is the full Social Access Authorization ACDC Example. The Guardian ACDC, the Ward's Core Identity ACDC Example (Citizen as Ward), Issuing Agent B (for Age), Issuing Agent A (for Guardian), and the Organizational Unit travel as supporting artifacts along the `guardian`, `coreIdentity`, `utahAgent`, and `orgUnit` edges.
