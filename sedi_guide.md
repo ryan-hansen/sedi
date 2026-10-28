@@ -100,7 +100,7 @@ The diagram above shows two infrastructure services relevant to ACDC dynamic sta
 
 Suppose, for example, that driver's licenses have a validity resolution of one day. That means a revoked driver's license is invalid for the next 24-hour period beginning at midnight on the day the State issues the revocation event. The revocation takes effect the next day. This is the revocation date. To catch any driver's license revocations without loss, the observer contacted by that Verifier must refresh its caches at midnight each day.  Then, even if a network outage occurs during the next 24-hour period, the observer will correctly report the revocation state. Special allowance may be made for law enforcement operating in network-denied environments that prevent them from updating their observer caches for periods longer than 24 hours.
 
-The observer network's main purpose is to isolate requests from verifiers of dynamic ACDC state at the point of validation from the Issuer. The observer network prevents the State from observing, without legally repressed collusion with Observers, when, where, and to whom a Citizen presents their SEDI ACDCs.The Registrar updates the observer network in bulk, thereby providing herd privacy to the observer network. 
+The observer network's main purpose is to isolate requests from Verifiers of dynamic ACDC state at the point of validation from the Issuer. The observer network prevents the State from observing, without legally repressed collusion with Observers, when, where, and to whom a Citizen presents their SEDI ACDCs.The Registrar updates the observer network in bulk, thereby providing herd privacy to the observer network. 
 
 ## ACDC Graduated Disclosure
 
@@ -108,13 +108,13 @@ The ACDC specification details the graduated disclosure mechanisms in the ACDC p
 
 At a high level, an ACDC has properties similar to a Merkle tree: it is a hash (cryptographic digest) tree that enables proof of inclusion for a given node or leaf on one branch of the tree without disclosing nodes or leaves on other branches. Unlike a binary Merkle tree, an ACDC is an M-ary tree.  An ACDC has a much more flexible arrangement of nodes, branches, and leaves as well. This makes ACDCs better suited to more complex hierarchical data semantics. 
 
-The important property shared with a Merkle Tree is that a cryptographic commitment to the root hash (SAID) of an ACDC (Merkle root) makes a verifiable tamper-evident commitment to the whole tree. This means that the Issuer of an ACDC can make a verifiable commitment to everything in the ACDC by merely anchoring the SAID of that ACDC in its KEL.  Later, an ACDC presenter can disclose parts of the tree while withholding others. We call this nested partial disclosure. A verifier can verify that a given partial disclosure expansion always collapses to the same ACDC root hash (SAID) committed to by the Issuer.  
+The important property shared with a Merkle Tree is that a cryptographic commitment to the root hash (SAID) of an ACDC (Merkle root) makes a verifiable tamper-evident commitment to the whole tree. This means that the Issuer of an ACDC can make a verifiable commitment to everything in the ACDC by merely anchoring the SAID of that ACDC in its KEL.  Later, an ACDC presenter can disclose parts of the tree while withholding others. We call this nested partial disclosure. A Verifier can verify that a given partial disclosure expansion always collapses to the same ACDC root hash (SAID) committed to by the Issuer.  
 
 In addition to nested partial disclosure, ACDCs optionally support a flat selective disclosure mechanism based on an array of attributes. Because many other verifiable credential formats use the term "selective disclosure" to refer to a selectively disclosable array of attributes, the ACDC specification uses "selective disclosure" only for the array of attributes, while the hierarchical Merkle Tree-like construction is called nested partial disclosure.
 
 The term SAID stands for Self-Addressing IDentifier. It is defined in the CESR specification. Basically, it is a normative mechanism for embedding a cryptographically agile digest in any field-map data structure. This provides a universally unique content-addressable identifier for the data structure. Because a serialization cannot include a digest of the serialization, the SAID protocol uses a dummy set of characters to compute the digest, then replaces them with the resulting digest. This process is reversible. The SAID protocol enables ACDCs to convert any nested field map into a Merkle-Tree-like construction.
 
-An ACDC in whole or in part can be collapsed into and expanded from its  SAIDs. This means ACDCs can protect privacy via nested partial disclosure.  Successive application of nested partial disclosure is a graduated disclosure process that lets a discloser place the disclosed data under contractual protection before full disclosure.
+An ACDC in whole or in part can be collapsed into and expanded from its  SAIDs. This means ACDCs can protect privacy via nested partial disclosure.  Successive application of nested partial disclosure is a graduated disclosure process that lets a Discloser place the disclosed data under contractual protection before full disclosure.
 
 At the top level of an ACDC is its root hash or SAID. There are other top-level attributes. An ACDC has four sections as follows: 
 - Schema Section. This is typically represented via the SAID or $id of the JSON Schema. It can be the full schema, but schemas are typically well known and cached, so only the SAID needs to be provided.
@@ -126,7 +126,7 @@ The following diagram shows the nested partial disclosure structure of an ACDC.
 
 ![ACDC_Mary_Hashtree](assets/ACDC_Mary_Hashtree.png)
 
-As an M-ary hash tree, the ACDC can be compacted (collapsed) into its top-level "Root" SAID using what the specification calls the most-compact SAID algorithm. This top-level SAID acts equivalently to the Root Hash of a Merkle Tree.  Any correct partial expansion of the ACDC that discloses one or more branches or partial branches will also always collapse into the same top-level SAID. Thus, an inclusion proof for some set of nodes and leaves in the ACDC M-ary hash tree consists of a partial disclosure which the verifier then collapses using the ACDC most compact SAID algorithm into the top-level "root" SAID. If the resulting collapsed SAID matches the published ACDC SAID, then the partial disclosure satisfies the inclusion proof. This enables a very powerful, flexible hierarchical structuring of the Attribute, Edge, and Rule sections of the ACDC to best match the use cases for graduated disclosure of the associated data.
+As an M-ary hash tree, the ACDC can be compacted (collapsed) into its top-level "Root" SAID using what the specification calls the most-compact SAID algorithm. This top-level SAID acts equivalently to the Root Hash of a Merkle Tree.  Any correct partial expansion of the ACDC that discloses one or more branches or partial branches will also always collapse into the same top-level SAID. Thus, an inclusion proof for some set of nodes and leaves in the ACDC M-ary hash tree consists of a partial disclosure which the Verifier then collapses using the ACDC most compact SAID algorithm into the top-level "root" SAID. If the resulting collapsed SAID matches the published ACDC SAID, then the partial disclosure satisfies the inclusion proof. This enables a very powerful, flexible hierarchical structuring of the Attribute, Edge, and Rule sections of the ACDC to best match the use cases for graduated disclosure of the associated data.
 
 Consider the following example of a fully disclosed SEDI Core Identity ACDC:
 
@@ -293,7 +293,7 @@ Please notice that each SAIDed field map has a SAID `d` field and a unique entro
 
 Technically, this is a type of zero-knowledge proof (ZKP) that operates similarly to a Merkle tree. It proves the disclosed data is correct without revealing or leaking any undisclosed data.
 
-The discloser can then choose which parts to disclose to different verifiers as needed, with provable disclosures, without leaking any data not yet disclosed.
+The Discloser can then choose which parts to disclose to different Verifiers as needed, with provable disclosures, without leaking any data not yet disclosed.
 
 For example, suppose a given presentation only needs to disclose the `legalPresenceStatus` and `expirationDate` fields. The following partial disclosure would be provably correct without leaking any of the other nested field map attributes, only their SAIDs.
 
@@ -381,10 +381,10 @@ The following table provides the schema ID  `$id` field and a description. ACDCs
 This defines an ACDC that the State's root-of-trust AID or root AID issues to delegate an Organizational Unit AID within the State hierarchy. Typically, an organizational unit is at a department, division, or program level within the State.
 
 ```python
-UnitSchemaSaid = 'ELjJlSaExu9ss766dDpQoLE5aT6-wIRyR72X5YLC3ILc'
+UnitSchemaSaid = 'EBbOpBe0lP_epHhakeiXdOmeal3leDfLRf0PAItsanoQ'
 UnitSchema = \
 {
-  '$id': 'ELjJlSaExu9ss766dDpQoLE5aT6-wIRyR72X5YLC3ILc',
+  '$id': 'EBbOpBe0lP_epHhakeiXdOmeal3leDfLRf0PAItsanoQ',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'title': 'SEDI Organizational Unit Schema',
   'description': 'SEDI Oganizational Unit JSON Schema for acm ACDC.',
