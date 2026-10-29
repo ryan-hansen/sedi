@@ -3429,7 +3429,7 @@ The defined steps of IPEX negotiation are described in detail in the *Exchange S
 - *agree* — accept a specific offer
 - *grant* — deliver the negotiated ACDCs plus proofs
 - *admit* — acknowledge receipt of the grant
-- *spurn* — reject and end the exchange (only on apply, offer, or agree)
+- *spurn* — reject and end the exchange (on apply, offer, agree, or a bare unsolicited grant)
 
 IPEX exchanges do not necessarily include all of these; an exchange may open with apply, offer, or grant. The opening message sets `x`. Every subsequent message copies that same `x` and sets `p` to the SAID of the message it answers. Parties do not copy payloads forward; they chain by SAID.
 
@@ -3439,7 +3439,7 @@ The disclosure plan is passed in the query section of the `exn` message (`q.dp`)
 (schema SAID, prefix, [paths])
 ```
 
-The *schema SAID* is published with the schema and identifies the ACDC type. The *prefix* places that ACDC in the DAG (`""` for paths relative to that ACDC, or a DAG-absolute prefix ending in `/`). The *paths* list names the sections or fields to disclose under that prefix. The zeroth triple is always the *origin*—the source node of the DAG for this exchange. Later triples are the other ACDCs in the graph, in breadth-first order from that origin.
+The *schema SAID* is published with the schema and identifies the ACDC type. The *prefix* places that ACDC in the DAG: `"/"` for the origin (the only legal origin prefix), or a DAG-absolute edge path that starts and ends with `/` and terminates at a far-node hop `/_/` (for example `"/e/utahAgent/_/"`). The *paths* list names the sections or fields to disclose under that prefix. A sole empty-string path (`[""]`) requests the whole selected ACDC; an empty list (`[]`) permits any valid compaction level. Paths into an aggregate section must include the element index (for example `"A/4/over13"`, not `"A/over13"`). The zeroth triple is always the *origin*—the source node of the DAG for this exchange. Later triples are the other ACDCs in the graph, in breadth-first order from that origin, with each node appearing once.
 
 #### Discloser and Disclosee
 
@@ -3472,7 +3472,7 @@ In a SEDI presentation, A and B might be entitlements the Holder discloses toget
 
 #### Exchange Steps
 
-The usual IPEX sequence is apply → offer → agree → grant → admit. Either party may terminate with spurn at apply, offer, or agree. The initiating steps are apply, offer, and grant (a flow may open on any of those).
+The usual IPEX sequence is apply → offer → agree → grant → admit. Either party may terminate with spurn at apply, offer, or agree, and may also spurn a bare unsolicited grant. The initiating steps are apply, offer, and grant (a flow may open on any of those).
 
 *Apply* is the Disclosee's request. It carries the disclosure plan in `q.dp` and may require anchoring (`a.ax`). It opens a solicited flow and chooses the transaction identifier.
 
@@ -3484,7 +3484,7 @@ The usual IPEX sequence is apply → offer → agree → grant → admit. Either
 
 *Admit* is the Disclosee's acknowledgement of a grant. It settles the exchange from the Disclosee's side and may seal that acknowledgement.
 
-*Spurn* is either party's rejection. It ends the exchange at apply, offer, or agree without a grant.
+*Spurn* is either party's rejection. It ends the exchange at apply, offer, or agree without a grant, and may also reject a bare unsolicited grant (a grant with empty prior `p`).
 
 ### IPEX builders in keripy
 
@@ -3585,13 +3585,14 @@ unitIssuedAnchor = root.interact(
 unitRegistry.anchorMsg(unitIssued.said)
 ```
 
-The offer carries the bare ACDC—no registry proof yet:
+The offer carries the full ACDC body so the Issuee can inspect it before agreeing. Pass `artifacts=[]` for that: an empty list means "attach the origin and nothing else." Omitting `artifacts` (`None`) leaves only the origin SAID in `a.o` with no nested body.
 
 ```python
 offer, offerAtc = ipexOffer(
     hab=root,
     message="Offer the Organizational Unit delegation",
     origin=unit,
+    artifacts=[],                # attach full origin body for issuance
     apply=apply,
     ax=[True],
 )
@@ -3634,6 +3635,7 @@ offer, offerAtc = ipexOffer(
     hab=root,
     message="Offer the Organizational Unit delegation",
     origin=unit,
+    artifacts=[],                # full disclosure for issuance
     apply=apply,
     ax=[True],
 )
@@ -3707,13 +3709,17 @@ apply, applyAtc = ipexApply(
     hab=agentA,                  # Issuing Agent A or B
     recp=org.pre,
     message="Issue the Issuing Agent delegation",
-    modifiers=dict(dp=[[[AgentSchemaSaid, "/", [""]]]]),
+    modifiers=dict(dp=[[
+        [AgentSchemaSaid, "/", [""]],
+        [UnitSchemaSaid, "/e/orgUnit/_/", [""]],
+    ]]),
     ax=[True],
 )
 offer, offerAtc = ipexOffer(
     hab=org,
     message="Offer the Issuing Agent delegation",
     origin=agent,                # agent ACDC
+    artifacts=[unit],            # Unit node named by the Agent edge
     apply=apply,
     ax=[True],
 )
@@ -3727,6 +3733,7 @@ grant, grantAtc = ipexGrant(
     recp=agentA.pre,
     message="Grant the Issuing Agent delegation",
     origin=proofedAgent,         # agent plus registry proof
+    artifacts=[proofedUnit],
     agree=agree,
     ax=[True],
 )
@@ -3871,7 +3878,7 @@ Issuing Agent A and Issuing Agent B each also establish an issuance registry for
 
 ### Example 2: Identity assurance receipt
 
-This second example is the IAL3 proofing session that opens a Citizen's SEDI lifecycle. A Proofing Agent challenges the Citizen out of band (the Citizen's AID and a salty nonce also travel out of band, so a man in the middle cannot substitute another AID). The Citizen anchors that challenge in an interaction event in their KEL. The Proofing Agent finishes identity assurance and issues a registry-less Identity Assurance Receipt (IAR): the receipt's unique entropy is the challenge itself, and the Agent authenticates it with a signature rather than an issuance registry. The Citizen later presents that signed receipt to an Issuing Agent (or other State Verifier) over IPEX. The State already has a copy of the receipt from the Proofing Agent out of band and re-verifies the challenge anchor before issuing Core entitlements.
+This second example is the IAL3 proofing session that opens a Citizen's SEDI lifecycle. A Proofing Agent challenges the Citizen out of band (the Citizen's AID and a salty nonce also travel out of band, so a man in the middle cannot substitute another AID). The Citizen anchors that challenge in an interaction event in their KEL. The Proofing Agent finishes identity assurance and issues a registry-less Identity Assurance Receipt (IAR): the receipt's unique entropy is the challenge itself, and the Agent authenticates it with a signature rather than an issuance registry or KEL seal. That choice matches the operational constraint that Proofing Agents are not full wallets; it also means the IAR is not perpetually verifiable across Agent key rotation the way a KEL-anchored or registry-backed issuance is. The Citizen later presents that signed receipt to an Issuing Agent (or other State Verifier) over IPEX. The State already has a copy of the receipt from the Proofing Agent out of band and re-verifies the challenge anchor—and the Agent signature against the Agent key state it trusts for that session—before issuing Core entitlements.
 
 The Citizen anchors the challenge:
 
@@ -3973,6 +3980,7 @@ offer, offerAtc = ipexOffer(
     hab=agentA,
     message="Offer the Core Identity credential",
     origin=core,                 # issued Core ACDC
+    artifacts=[agent, unit],     # full origin plus authority-chain nodes
     apply=apply,
     ax=[True],
 )
@@ -4135,10 +4143,9 @@ selectiveCore = acdcmap(
     rule=core.sad["r"],
     kind=Kinds.json,
 )
-
-proofedAge = messagize(serder=selectiveAge, bonds=[ageProof.data], framed=False, gvrsn=Vrsn_2_0)
-proofedCore = messagize(serder=selectiveCore, bonds=[coreProof.data], framed=False, gvrsn=Vrsn_2_0)
 ```
+
+Negotiate the disclosure plan first. Aggregate paths use the element index (`A/4/over13`):
 
 ```python
 apply, applyAtc = ipexApply(
@@ -4146,7 +4153,7 @@ apply, applyAtc = ipexApply(
     recp=citizen.pre,
     message="Prove given name and over-13",
     modifiers=dict(dp=[[
-        [AgeSchemaSaid, "/", ["A/over13"]],
+        [AgeSchemaSaid, "/", ["A/4/over13"]],
         [CoreSchemaSaid, "/e/coreIdentity/_/", ["a/givenName/"]],
         [AgentSchemaSaid, "/e/coreIdentity/_/e/utahAgent/_/", []],
         [UnitSchemaSaid, "/e/coreIdentity/_/e/utahAgent/_/e/orgUnit/_/", []],
@@ -4165,14 +4172,59 @@ agree, agreeAtc = ipexAgree(
     message="Agree to given name and over-13",
     offer=offer,
 )
+```
+
+The Core attribute block declares a presentation registry (`a.rd`). On presentation the Verifier requires proof against that registry as well as the Issuer's issuance-registry proof. After agree, build a draft grant (same SAID as the final grant), call `Registrar.present`, seal that update in the Holder's KEL, then attach both proofs on the final grant:
+
+```python
+from keri.core import SealEvent, SerderKERI, messagize
+import keri.help.helping as helping
+
+stamp = helping.nowIso8601()
+draftGrant, _ = ipexGrant(
+    hab=citizen,
+    recp=verifier.pre,
+    message="Present given name and over-13",
+    origin=selectiveAge,
+    artifacts=[selectiveCore, agent, unit],
+    agree=agree,
+    dt=stamp,
+    ax=[True],
+    anchorers=[],
+)
+presentationProof, presented = holderRegistrar.present(
+    presentationRegistry,
+    grant=draftGrant,
+)
+presentedAnchor = citizen.interact(
+    data=[dict(i=presentationRegistry.regk, s=presented.sad["n"], d=presented.said)],
+    framed=True,
+    gvrsn=Vrsn_2_0,
+)
+presentationRegistry.anchorMsg(presented.said)
+
+anchor = SerderKERI(raw=presentedAnchor)
+proofedAge = messagize(serder=selectiveAge, bonds=[ageProof.data], framed=False, gvrsn=Vrsn_2_0)
+proofedCore = messagize(
+    serder=selectiveCore,
+    bonds=[
+        coreProof.data,
+        presentationProof.data,
+        SealEvent(i=citizen.pre, s=anchor.snh, d=anchor.said),
+    ],
+    framed=False,
+    gvrsn=Vrsn_2_0,
+)
 grant, grantAtc = ipexGrant(
     hab=citizen,
     recp=verifier.pre,
     message="Present given name and over-13",
-    origin=proofedAge,           # selective Age plus registry proof
+    origin=proofedAge,           # selective Age plus issuance-registry proof
     artifacts=[proofedCore, proofedAgent, proofedUnit],
     agree=agree,
+    dt=stamp,
     ax=[True],
+    anchorers=[],
 )
 admit, admitAtc = ipexAdmit(
     hab=verifier,
@@ -4312,9 +4364,9 @@ bespoke = acdcmap(
 )
 ```
 
-Age on the grant is again a selective variant via `Aggor.disclose(indices=[4])` and `acdcagg`, then `messagize` with its registry proof—the same pattern as Example 4. Social and the supporting chain artifacts travel full with their proofs.
+Age on the grant is again a selective variant via `Aggor.disclose(indices=[4])` and `acdcagg`, then `messagize` with its registry proof—the same pattern as Example 4, including the draft-grant presentation-registry proof when Core declares `a.rd`. Social and the supporting chain artifacts travel full with their proofs. The Unit node appears once in the plan (both Agent edges reach the same Organizational Unit).
 
-The IPEX exchange then uses that `bespoke` as the origin:
+The IPEX exchange then uses that `bespoke` as the origin. The `q.dp` triples follow breadth-first order from that origin:
 
 ```python
 apply, applyAtc = ipexApply(
@@ -4323,14 +4375,13 @@ apply, applyAtc = ipexApply(
     message="Prove over-13 and guardian social authorization",
     modifiers=dict(dp=[[
         [BespokeSchemaSaid, "/", [""]],
-        [AgeSchemaSaid, "/e/age/_/", ["A/over13"]],
+        [AgeSchemaSaid, "/e/age/_/", ["A/4/over13"]],
+        [SocialSchemaSaid, "/e/social/_/", [""]],
         [CoreSchemaSaid, "/e/age/_/e/coreIdentity/_/", []],
         [AgentSchemaSaid, "/e/age/_/e/utahAgent/_/", []],
-        [UnitSchemaSaid, "/e/age/_/e/utahAgent/_/e/orgUnit/_/", []],
-        [SocialSchemaSaid, "/e/social/_/", [""]],
         [GuardianSchemaSaid, "/e/social/_/e/guardian/_/", []],
-        [AgentSchemaSaid, "/e/social/_/e/guardian/_/e/utahAgent/_/", []],
-        [UnitSchemaSaid, "/e/social/_/e/guardian/_/e/utahAgent/_/e/orgUnit/_/", []],
+        [AgentSchemaSaid, "/e/age/_/e/coreIdentity/_/e/utahAgent/_/", []],
+        [UnitSchemaSaid, "/e/age/_/e/utahAgent/_/e/orgUnit/_/", []],
     ]]),
     ax=[True],
 )
@@ -4351,8 +4402,8 @@ grant, grantAtc = ipexGrant(
     recp=verifier.pre,
     message="Present over-13 and guardian social authorization",
     origin=bespoke,
-    artifacts=[proofedAge, proofedSocial, proofedGuardian,
-               proofedCore, proofedAgentB, proofedAgentA, proofedUnit],
+    artifacts=[proofedAge, proofedSocial, proofedCore, proofedAgentB,
+               proofedGuardian, proofedAgentA, proofedUnit],
     agree=agree,
     ax=[True],
 )
