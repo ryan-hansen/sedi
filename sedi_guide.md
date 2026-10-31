@@ -3027,7 +3027,7 @@ BespokeSchema = \
   },
   'r': 
   {
-    d': 'EFPxq4WPl29szUqbrQIviOh_Ls_RlrYbp4L-fdQH0XrX', 
+    'd': 'EFPxq4WPl29szUqbrQIviOh_Ls_RlrYbp4L-fdQH0XrX', 
     'l': ''
   }
 }
@@ -3400,7 +3400,7 @@ Before any sensitive ACDC content is delivered, the two parties negotiate and mu
 
 ### IPEX
 
-IPEX (Issuance and Presentation Exchange) is the exchange protocol for this negotiation. An IPEX negotiation is a series of KERI messages, specifically `exn` (exchange) messages, between two parties. IPEX is not a message type of its own; it is a meta-protocol that defines *routes* on `exn` messages so those two parties can hold an issuance or a presentation conversation. The same message sequence covers both inssuance and presentation.
+IPEX (Issuance and Presentation Exchange) is the exchange protocol for this negotiation. An IPEX negotiation is a series of KERI exchange messages between two parties: an opening `xip` (exchange inception), then subsequent `exn` (exchange) messages that continue that transaction. IPEX is not a message type of its own; it is a meta-protocol that defines *routes* on those messages so the parties can hold an issuance or a presentation conversation. The same message sequence covers both issuance and presentation.
 
 #### Issuance
 
@@ -3410,17 +3410,31 @@ IPEX (Issuance and Presentation Exchange) is the exchange protocol for this nego
 
 *Presentation* is the IPEX exchange in which a *Holder* discloses one or more already-issued ACDCs to a Verifier. Only the Holder and the Verifier need take part in the exchange. The Issuer of those ACDCs need not be online and need not be a signer on the presentation. The Issuer could also be the Verifier. Presentation may be partial: the disclosure plan names only the paths the Verifier needs.
 
-Each `exn` in the negotiation carries a common envelope. The fields that matter for IPEX are:
+Every IPEX step carries a routed envelope with sender, receiver, route, query, and attributes. The opening message is always a KERI `xip`; every subsequent message in that negotiation is an `exn`.
+
+Shared fields on both:
 
 | Field | Role |
 |:--|:--|
 | `i` | Sender AID |
 | `ri` | Receiver AID |
-| `x` | Transaction identifier shared by every message in this negotiation |
-| `p` | Prior exchange SAID (empty on the opening message) |
 | `r` | Route that selects the IPEX step (`/ipex/apply`, `/ipex/offer`, and so on) |
 | `q` | Query section; holds the disclosure plan at `q.dp` when the step negotiates paths |
 | `a` | Attribute section; holds the human message, origin SAID(s), and anchoring flag |
+
+`xip` also carries:
+
+| Field | Role |
+|:--|:--|
+| `u` | Unique entropy so the exchange-inception SAID is unguessable |
+| `d` | Message SAID; this value *is* the transaction identifier for the negotiation |
+
+`exn` also carries:
+
+| Field | Role |
+|:--|:--|
+| `x` | Transaction identifier — the SAID `d` of the opening `xip` |
+| `p` | Prior message SAID (the `d` of the `xip` or `exn` this step answers) |
 
 The defined steps of IPEX negotiation are described in detail in the *Exchange Steps* section below, but in short, they are the following:
 
@@ -3431,9 +3445,9 @@ The defined steps of IPEX negotiation are described in detail in the *Exchange S
 - *admit* — acknowledge receipt of the grant
 - *spurn* — reject and end the exchange (on apply, offer, agree, or a bare unsolicited grant)
 
-IPEX exchanges do not necessarily include all of these; an exchange may open with apply, offer, or grant. The opening message sets `x`. Every subsequent message copies that same `x` and sets `p` to the SAID of the message it answers. Parties do not copy payloads forward; they chain by SAID.
+IPEX exchanges do not necessarily include all of these; an exchange may open with apply, offer, or grant. Whichever step opens the flow is an `xip`; its SAID `d` becomes the transaction identifier. Every subsequent message is an `exn` that copies that identifier into `x` and sets `p` to the SAID of the message it answers. Parties do not copy payloads forward; they chain by SAID.
 
-The disclosure plan is passed in the query section of the `exn` message (`q.dp`), which is a list of triples, one per ACDC involved in the disclosure:
+The disclosure plan is passed in the query section of the exchange message (`q.dp`), which is a list of triples, one per ACDC involved in the disclosure:
 
 ```text
 (schema SAID, prefix, [paths])
@@ -3447,7 +3461,7 @@ Both issuance and presentation are disclosures. The *Discloser* is the party tha
 
 #### Disclosure Plan
 
-As previously stated, an IPEX exchange may include a disclosure plan, designated as `q.dp` on the `exn` message envelope. `q.dp` appears on apply and offer, where the plan is negotiated.  On an offer, `q.dp` may be empty if the Discloser agrees to the apply's plan.  Empty `q.dp` on offer indicates a *ditto* of the apply's `q.dp`, provided that all other fields and verifications are valid. 
+As previously stated, an IPEX exchange may include a disclosure plan, designated as `q.dp` on the exchange-message envelope (`xip` or `exn`). `q.dp` appears on apply and offer, where the plan is negotiated.  On an offer, `q.dp` may be empty if the Discloser agrees to the apply's plan.  Empty `q.dp` on offer indicates a *ditto* of the apply's `q.dp`, provided that all other fields and verifications are valid. 
 
 Grant does not restate `q.dp`; it delivers the ACDC variant(s) that satisfy the agreed plan, or that the Discloser is willing to disclose in the case of an exchange that opens with a grant. Nested ACDC bodies travel with the offer or grant as attached CESR streams; their instance SAIDs appear in `a.o`. Registry proofs that show dynamic state (such as revocation status) are attached on the grant, not earlier.
 
@@ -3472,19 +3486,19 @@ In a SEDI presentation, A and B might be entitlements the Holder discloses toget
 
 #### Exchange Steps
 
-The usual IPEX sequence is apply → offer → agree → grant → admit. Either party may terminate with spurn at apply, offer, or agree, and may also spurn a bare unsolicited grant. The initiating steps are apply, offer, and grant (a flow may open on any of those).
+The usual IPEX sequence is apply → offer → agree → grant → admit. Either party may terminate with spurn at apply, offer, or agree, and may also spurn a bare unsolicited grant. The initiating steps are apply, offer, and grant (a flow may open on any of those). An initiating step that opens the flow is always an `xip`; a step that answers a prior message is always an `exn`.
 
-*Apply* is the Disclosee's request. It carries the disclosure plan in `q.dp` and may require anchoring (`a.ax`). It opens a solicited flow and chooses the transaction identifier.
+*Apply* is the Disclosee's request. It carries the disclosure plan in `q.dp` and may require anchoring (`a.ax`). Apply can only open a solicited flow, so it is always an `xip`; its SAID `d` is the transaction identifier that later `exn` messages copy into `x`.
 
-*Offer* is the Discloser's proposal. It names the origin ACDC SAID(s) in `a.o` and may carry a metadata or full ACDC body. When it answers an apply, an omitted disclosure plan inherits the apply's `q.dp`. An offer may also open an unsolicited flow with no prior apply. The Disclosee uses the offer to inspect terms and (for issuance) the full attributes before committing.
+*Offer* is the Discloser's proposal. It names the origin ACDC SAID(s) in `a.o` and may carry a metadata or full ACDC body. When it answers an apply, it is an `exn` (`x` = apply's `d`, `p` = apply's `d`) and an omitted disclosure plan inherits the apply's `q.dp`. An offer may also open an unsolicited flow with no prior apply; that opening offer is an `xip`. The Disclosee uses the offer to inspect terms and (for issuance) the full attributes before committing.
 
-*Agree* is the Disclosee's acceptance of a specific offer. It signs the offer's SAID. There is no new ACDC. When the offer required anchoring, agree echoes that requirement and seals the agreement.
+*Agree* is the Disclosee's acceptance of a specific offer. It is always an `exn`. It signs the offer's SAID. There is no new ACDC. When the offer required anchoring, agree echoes that requirement and seals the agreement.
 
-*Grant* is the Discloser's delivery of the negotiated ACDC variant(s), with registry proofs attached when the ACDC has an issuance registry. Its prior is normally the agree. It may instead follow an apply directly when the parties skip offer and agree. The grant does not restate `q.dp`. The grant is already verifiable; admit is not required for validity.
+*Grant* is the Discloser's delivery of the negotiated ACDC variant(s), with registry proofs attached when the ACDC has an issuance registry. When it continues a negotiation, it is an `exn` whose prior is normally the agree (or the apply, when the parties skip offer and agree). A bare unsolicited grant opens the flow and is therefore an `xip`. The grant does not restate `q.dp`. The grant is already verifiable; admit is not required for validity.
 
-*Admit* is the Disclosee's acknowledgement of a grant. It settles the exchange from the Disclosee's side and may seal that acknowledgement.
+*Admit* is the Disclosee's acknowledgement of a grant. It is always an `exn`. It settles the exchange from the Disclosee's side and may seal that acknowledgement.
 
-*Spurn* is either party's rejection. It ends the exchange at apply, offer, or agree without a grant, and may also reject a bare unsolicited grant (a grant with empty prior `p`).
+*Spurn* is either party's rejection. It is always an `exn`. It ends the exchange at apply, offer, or agree without a grant, and may also reject a bare unsolicited grant (an opening grant `xip`).
 
 ### IPEX builders in keripy
 
@@ -3501,19 +3515,22 @@ from keri.acdc import (
 )
 ```
 
-Each builder returns `(serder, atc)`: the signed exchange serder and its detached attachment bytes. Important fields the builders set:
+Each builder returns `(serder, atc)`: the signed exchange serder and its detached attachment bytes. Opening builders (`ipexApply`, and `ipexOffer` / `ipexGrant` when they start a flow) produce an `xip`; the others produce an `exn`. Important fields:
 
 | Field | Role |
 |:--|:--|
+| `t` | Message type: `xip` on the opener, `exn` on every follow-on |
 | `r` | Route (`/ipex/apply`, `/ipex/offer`, `/ipex/agree`, `/ipex/grant`, `/ipex/admit`, `/ipex/spurn`) |
-| `x` | Transaction identifier (chosen on the opening message; later messages copy it) |
-| `p` | Prior exchange SAID (empty on the opening message) |
+| `d` | Message SAID; on an opening `xip`, this value is the transaction identifier |
+| `u` | Unique entropy on `xip` only |
+| `x` | Transaction identifier on `exn` only (the opening `xip`'s `d`) |
+| `p` | Prior message SAID on `exn` only |
 | `q.dp` | Disclosure plan (required on apply; offer may inherit or override; grant does not carry it) |
 | `a.m` | Human-readable message |
 | `a.o` | SAID(s) of the origin ACDC(s) being offered or granted |
 | `a.ax` | Anchoring requirement (`[True]` seals the commitment in a KEL) |
 
-Later builders take the prior exchange as a `Serder` (`apply=`, `offer=`, `agree=`, `grant=`). Habitats in the snippets are ordinary `Hab` instances named for their role (`root`, `org`, `agentA`, `citizen`, `verifier`, and so on).
+Later builders take the prior exchange as a `Serder` (`apply=`, `offer=`, `agree=`, `grant=`). When that prior is an opening `xip`, follow-on builders set `x` from its SAID `d`. Habitats in the snippets are ordinary `Hab` instances named for their role (`root`, `org`, `agentA`, `citizen`, `verifier`, and so on).
 
 ### Delivering and retrieving exchanges
 
@@ -3906,7 +3923,7 @@ iar = acdcmap(
 signedIar = proofer.endorse(serder=iar, framed=False, gvrsn=Vrsn_2_0)
 ```
 
-The Citizen then presents the signed receipt. This exchange opens on grant (no apply, offer, or agree in the running path):
+The Citizen then presents the signed receipt. This exchange opens on grant as an `xip` (no apply, offer, or agree in the running path):
 
 ```python
 grant, grantAtc = ipexGrant(
